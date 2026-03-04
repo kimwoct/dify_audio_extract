@@ -1,0 +1,36 @@
+version: 0.0.1
+type: plugin
+author: kimwxng
+name: yt-dlp
+label:
+  en_US: yt-dlp
+  ja_JP: yt-dlp
+  zh_Hans: yt-dlp
+  pt_BR: yt-dlp
+description:
+  en_US: yt dlp runner]
+  ja_JP: yt dlp runner]
+  zh_Hans: yt dlp runner]
+  pt_BR: yt dlp runner]
+icon: icon.svg
+icon_dark: icon-dark.svg
+resource:
+  memory: 268435456
+  permission: {}
+plugins:
+  tools:
+    - provider/yt-dlp.yaml
+meta:
+  version: 0.0.1
+  arch:
+    - amd64
+    - arm64
+  runner:
+    language: python
+    version: "3.12"
+    entrypoint: main
+  minimum_dify_version: null
+created_at: 2026-03-04T19:45:13.552614+08:00
+privacy: PRIVACY.md
+repo: https://github.com/kimwxng/dify-plugin-yt-dlp
+verified: false

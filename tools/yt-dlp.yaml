@@ -1,0 +1,92 @@
+identity:
+  name: "run_yt_dlp"
+  author: "kimwxng"
+  label:
+    en_US: "run_yt_dlp"
+    zh_Hans: "run_yt_dlp"
+    pt_BR: "run_yt_dlp"
+    ja_JP: "run_yt_dlp"
+description:
+  human:
+    en_US: "Download a video using yt-dlp and return it as a file."
+    zh_Hans: "使用 yt-dlp 下载视频并将其作为文件返回。"
+    pt_BR: "Baixa um vídeo com yt-dlp e retorna como arquivo."
+    ja_JP: "yt-dlp で動画をダウンロードし、ファイルとして返します。"
+  llm: "Download a video from the given URL using yt-dlp and return the downloaded file."
+parameters:
+  - name: url
+    type: string
+    required: true
+    label:
+      en_US: URL
+      zh_Hans: 链接
+      pt_BR: URL
+      ja_JP: URL
+    human_description:
+      en_US: "Video page URL to download via yt-dlp."
+      zh_Hans: "要通过 yt-dlp 下载的视频页面链接。"
+      pt_BR: "URL da página do vídeo para baixar com yt-dlp."
+      ja_JP: "yt-dlp でダウンロードする動画ページ URL。"
+    llm_description: "The video URL to download."
+    form: llm
+  - name: extract_audio
+    type: boolean
+    required: false
+    default: false
+    label:
+      en_US: Extract Audio
+      zh_Hans: 提取音频
+      pt_BR: Extrair Áudio
+      ja_JP: 音声を抽出
+    human_description:
+      en_US: "If true, extract audio from the video."
+      zh_Hans: "若为 true，则从视频中提取音频。"
+      pt_BR: "Se true, extrai o áudio do vídeo."
+      ja_JP: "true の場合、動画から音声を抽出します。"
+    llm_description: "Whether to extract audio only."
+    form: llm
+  - name: audio_format
+    type: string
+    required: false
+    default: mp3
+    label:
+      en_US: Audio Format
+      zh_Hans: 音频格式
+      pt_BR: Formato de Áudio
+      ja_JP: 音声フォーマット
+    human_description:
+      en_US: "Audio format when extract_audio is true."
+      zh_Hans: "extract_audio 为 true 时使用的音频格式。"
+      pt_BR: "Formato de áudio quando extract_audio for true."
+      ja_JP: "extract_audio が true の場合の音声フォーマット。"
+    llm_description: "Audio format for extraction, default mp3."
+    form: llm
+  - name: audio_quality
+    type: number
+    required: false
+    default: 5
+    min: 0
+    max: 10
+    precision: 0
+    label:
+      en_US: Audio Quality
+      zh_Hans: 音频质量
+      pt_BR: Qualidade de Áudio
+      ja_JP: 音質
+    human_description:
+      en_US: "Audio quality from 0 to 10 when extract_audio is true."
+      zh_Hans: "extract_audio 为 true 时，音频质量范围为 0 到 10。"
+      pt_BR: "Qualidade de áudio de 0 a 10 quando extract_audio for true."
+      ja_JP: "extract_audio が true の場合の音質 (0〜10)。"
+    llm_description: "Audio quality between 0 and 10, default 5."
+    form: llm
+output_schema:
+  type: object
+  properties:
+    file:
+      type: file
+  required:
+    - file
+extra:
+  python:
+    source: tools/yt-dlp.py
