@@ -96,6 +96,15 @@ def _run_yt_dlp(
                 str(parsed_audio_quality),
             ]
         )
+    else:
+        base_args.extend(
+            [
+                "--format",
+                "bv*[height<=360][ext=mp4][vcodec^=avc1]+ba[ext=m4a]/bv*[height<=360][ext=mp4]+ba[ext=m4a]/b[height<=360][ext=mp4]/b[height<=360]/b",
+                "--merge-output-format",
+                "mp4",
+            ]
+        )
     base_args.extend(["--", cleaned_url])
 
     try:
