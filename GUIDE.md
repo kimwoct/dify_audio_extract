@@ -114,7 +114,9 @@ Study these examples to understand plugin implementation:
 
 #### Manual Packaging
 ```bash
-dify-plugin plugin package ./YOUR_PLUGIN_DIR
+# The CLI is `dify` (formerly `dify-plugin`): brew tap langgenius/dify && brew install dify
+# Run from the plugin's PARENT directory:
+dify plugin package YOUR_PLUGIN_DIR
 ```
 
 #### Automated GitHub Workflow

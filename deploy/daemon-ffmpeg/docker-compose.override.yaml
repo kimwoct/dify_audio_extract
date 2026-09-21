@@ -1,0 +1,8 @@
+# Merge into dify/docker/docker-compose.override.yaml (or copy beside docker-compose.yaml
+# as that exact filename — docker compose auto-loads it).
+# Requires ./ffmpeg/bin/{ffmpeg,ffprobe} next to the compose files — see README.md.
+services:
+  plugin_daemon:
+    volumes:
+      - ./ffmpeg/bin/ffmpeg:/usr/local/bin/ffmpeg:ro
+      - ./ffmpeg/bin/ffprobe:/usr/local/bin/ffprobe:ro

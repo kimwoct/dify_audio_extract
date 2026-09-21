@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from collections.abc import Generator
 import argparse
 import os
@@ -24,6 +26,49 @@ def _to_bool(value: Any) -> bool:
     if isinstance(value, str):
         return value.strip().lower() in {"1", "true", "yes", "y", "on"}
     return bool(value)
+
+
+_ARCH_ALIASES = {
+    "arm64": "aarch64",
+    "aarch64": "aarch64",
+    "x86_64": "x86_64",
+    "amd64": "x86_64",
+}
+
+
+def _strip_quarantine(path: Path) -> None:
+    if platform.system().lower() != "darwin":
+        return
+    subprocess.run(
+        ["xattr", "-d", "com.apple.quarantine", str(path)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+
+def _js_runtime_args(root_dir: Path, current_platform: str) -> tuple[list[str], str]:
+    """Enable the bundled QuickJS-NG binary as a yt-dlp JavaScript runtime.
+
+    deno stays enabled by default with higher priority, so a deno installed on
+    the host wins; the bundled quickjs is the fallback (e.g. inside the plugin
+    daemon container, where no runtime exists). Returns the yt-dlp args and a
+    human-readable status that is surfaced in error messages.
+    """
+    arch = _ARCH_ALIASES.get(platform.machine().lower())
+    if not arch:
+        return [], f"unsupported architecture {platform.machine()!r}, no bundled runtime"
+    platform_dir = "macosx" if current_platform == "darwin" else "linux"
+    qjs_path = root_dir / "binary" / platform_dir / arch / "qjs"
+    if not qjs_path.exists():
+        return [], f"bundled quickjs not found at {qjs_path}"
+    if not os.access(qjs_path, os.X_OK):
+        try:
+            qjs_path.chmod(qjs_path.stat().st_mode | 0o111)
+        except OSError as e:
+            return [], f"quickjs at {qjs_path} is not executable (chmod failed: {e})"
+    _strip_quarantine(qjs_path)
+    return ["--js-runtimes", f"quickjs:{qjs_path}"], f"enabled bundled quickjs at {qjs_path}"
 
 
 def _run_yt_dlp(
@@ -76,14 +121,21 @@ def _run_yt_dlp(
     if not os.access(binary_path, os.X_OK):
         raise PermissionError(f"yt-dlp binary is not executable: {binary_path}")
 
-    if current_platform == "darwin":
-        subprocess.run(
-            ["xattr", "-d", "com.apple.quarantine", str(binary_path)],
-            cwd=root_dir,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
+    _strip_quarantine(binary_path)
+
+    js_args, js_diag = _js_runtime_args(root_dir, current_platform)
+    qjs_staging: tempfile.TemporaryDirectory | None = None
+    if current_platform != "darwin" and js_args:
+        # Plugin-daemon storage volumes are frequently mounted noexec, where the
+        # exec bit alone is not enough — yt-dlp would silently mark the runtime
+        # unavailable. Stage a copy where execution is allowed, mirroring the
+        # yt-dlp binary fallback below.
+        qjs_staging = tempfile.TemporaryDirectory(prefix="yt_dlp_qjs_")
+        staged = Path(qjs_staging.name) / "qjs"
+        shutil.copy2(Path(js_args[1].split(":", 1)[1]), staged)
+        staged.chmod(0o755)
+        js_args = ["--js-runtimes", f"quickjs:{staged}"]
+        js_diag = f"enabled quickjs staged at {staged}"
 
     base_args = ["--output", str(output_path)]
     if extract_audio:
@@ -97,6 +149,7 @@ def _run_yt_dlp(
             ]
         )
     else:
+        # Keep video payloads bounded for the Dify file contract (PR #1).
         base_args.extend(
             [
                 "--format",
@@ -105,6 +158,7 @@ def _run_yt_dlp(
                 "mp4",
             ]
         )
+    base_args.extend(js_args)
     base_args.extend(["--", cleaned_url])
 
     try:
@@ -118,6 +172,10 @@ def _run_yt_dlp(
             shutil.copy2(binary_path, fallback_binary)
             fallback_binary.chmod(0o755)
             result = subprocess.run([str(fallback_binary), *base_args], capture_output=True, text=True, cwd=root_dir)
+
+    if qjs_staging is not None:
+        qjs_staging.cleanup()
+        qjs_staging = None
 
     if result.returncode != 0:
         stdout_tail = (result.stdout or "").strip()[-1000:]
@@ -137,6 +195,7 @@ def _run_yt_dlp(
 
         raise RuntimeError(
             f"yt-dlp failed with exit code {result.returncode}{signal_text}.{extra_hint} "
+            f"JS runtime: {js_diag}. "
             f"stdout_tail: {stdout_tail or '(empty)'}; stderr_tail: {stderr_tail or '(empty)'}"
         )
 

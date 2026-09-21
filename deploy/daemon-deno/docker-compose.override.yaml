@@ -1,0 +1,7 @@
+# Merge the volumes block into dify/docker/docker-compose.override.yaml (or copy
+# beside docker-compose.yaml under that exact name — docker compose auto-loads it).
+# Requires ./deno-bin/deno next to the compose files — see README.md.
+services:
+  plugin_daemon:
+    volumes:
+      - ./deno-bin/deno:/usr/local/bin/deno:ro

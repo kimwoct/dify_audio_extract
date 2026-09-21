@@ -186,3 +186,8 @@ cython_debug/
 .DS_Store
 .AppleDouble
 .LSOverride
+# Local agent/tooling artifacts
+.mimosa/
+.v2c/
+.video_agent/
+.zcodeignore
