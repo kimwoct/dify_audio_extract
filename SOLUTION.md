@@ -1,4 +1,4 @@
-# dify_audio_extract — fix solution (plugin v0.0.5)
+# dify_audio_extract — fix solution (plugin v0.0.6)
 
 Incident: Dify tool `kimwxng/yt-dlp/yt-dlp` failed with
 `RuntimeError: yt-dlp failed with exit code 1 … This video is not available`
@@ -29,7 +29,7 @@ plus `WARNING: [youtube] No supported JavaScript runtime could be found`.
    (`extract_audio=true`) hard-fails without ffmpeg/ffprobe in the daemon
    container — `ERROR: Postprocessing: ffprobe and ffmpeg not found`.
 
-## Fixes shipped in plugin 0.0.5
+## Fixes shipped in plugin 0.0.6
 
 - Bundled **QuickJS-NG v0.17.0** per-arch (`binary/{macosx,linux}/{aarch64,x86_64}/qjs`;
   linux builds are static-pie, no glibc dependency). sha256 pins and update
@@ -44,6 +44,10 @@ plus `WARNING: [youtube] No supported JavaScript runtime could be found`.
     (noexec-volume proof);
   - every `RuntimeError` now carries `JS runtime: <status>` for instant
     old-plugin detection.
+- optional `cookies_file` accepts a user-provided Netscape-format `cookies.txt`
+  upload, stages it with mode `0600` for the yt-dlp process, and removes the
+  temporary copy after the process exits; the plugin does not read browser
+  profiles or log cookie contents.
 - Package: ~41 MB compressed / ~48 MB uncompressed (packager cap: 50 MiB
   uncompressed).
 
@@ -72,6 +76,7 @@ plus `WARNING: [youtube] No supported JavaScript runtime could be found`.
 | Error has **no** `JS runtime:` marker | Old plugin (≤0.0.3) still installed — redo Remove + Install. |
 | Marker present **and** "No supported JavaScript runtime" in stderr | qjs couldn't exec (noexec) — install ≥0.0.5 or add the deno mount. |
 | `ffprobe and ffmpeg not found` | Daemon lacks ffmpeg — apply `deploy/daemon-ffmpeg/`. |
+| `Sign in to confirm you’re not a bot` | Upload a current YouTube `cookies.txt` through the tool's `cookies_file` input. Never paste cookie values into chat. |
 | "This video is not available", marker present, no JS warning | Video is genuinely unavailable (private/removed/restricted) — check logged-out in a browser. |
 | Plugin page version ≠ manifest `version:` | Wrong/failed install — repackage and reinstall. |
 
