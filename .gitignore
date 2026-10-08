@@ -187,6 +187,9 @@ cython_debug/
 .AppleDouble
 .LSOverride
 # Local agent/tooling artifacts
+cookies.txt
+*cookies*.txt
+secrets/
 .mimosa/
 .v2c/
 .video_agent/

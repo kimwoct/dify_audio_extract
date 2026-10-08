@@ -1,0 +1,9 @@
+services:
+  plugin_daemon:
+    volumes:
+      - type: bind
+        source: ./secrets/yt-dlp
+        target: /etc/dify/yt-dlp
+        read_only: true
+        bind:
+          create_host_path: false

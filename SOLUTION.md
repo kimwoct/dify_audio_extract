@@ -29,6 +29,28 @@ plus `WARNING: [youtube] No supported JavaScript runtime could be found`.
    (`extract_audio=true`) hard-fails without ffmpeg/ffprobe in the daemon
    container — `ERROR: Postprocessing: ffprobe and ffmpeg not found`.
 
+## Server-side cookie fallback in plugin 0.0.8
+
+When no `cookies_file` is supplied, the plugin reads the private file at
+`/etc/dify/yt-dlp/youtube-cookies.txt`, or the path configured by
+`YT_DLP_COOKIES_FILE` in the plugin process environment. It validates and
+stages a private copy without modifying the source. Explicit files retain
+precedence. Cookies remain outside Git and the plugin package; `secrets/`
+is excluded from both. See `deploy/daemon-cookies/README.md` for the read-only
+directory mount and workflow migration, and [COOKIE_API.md](COOKIE_API.md)
+for an API request with no cookie upload. All fallback calls share one
+server-side session; daemon administrators can still access the source file.
+
+## Cookie handling update in plugin 0.0.7
+
+The existing `cookies_file` input is unchanged. Cookie contents are now
+validated and normalized before launching yt-dlp, including local files,
+which are copied rather than handed directly to yt-dlp for modification.
+Errors distinguish missing cookies from supplied cookies. Cookie files are
+excluded from git and plugin packaging. See [COOKIE_API.md](COOKIE_API.md)
+for the upload-then-run workflow API request; credentials are never embedded
+in the package. Valid file format cannot repair a rotated YouTube session.
+
 ## Fixes shipped in plugin 0.0.6
 
 - Bundled **QuickJS-NG v0.17.0** per-arch (`binary/{macosx,linux}/{aarch64,x86_64}/qjs`;

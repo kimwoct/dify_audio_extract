@@ -1,4 +1,4 @@
-version: 0.0.6
+version: 0.0.8
 type: plugin
 author: kimwxng
 name: yt-dlp
@@ -21,7 +21,7 @@ plugins:
   tools:
     - provider/yt-dlp.yaml
 meta:
-  version: 0.0.6
+  version: 0.0.8
   arch:
     - amd64
     - arm64
