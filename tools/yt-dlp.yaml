@@ -80,6 +80,21 @@ parameters:
       ja_JP: "extract_audio が true の場合の音質 (0〜10)。"
     llm_description: "Audio quality between 0 and 10, default 5."
     form: llm
+  - name: cookies_file
+    type: file
+    required: false
+    label:
+      en_US: YouTube Cookies File
+      zh_Hans: YouTube Cookie 文件
+      pt_BR: Arquivo de Cookies do YouTube
+      ja_JP: YouTube Cookie ファイル
+    human_description:
+      en_US: "Optional user-provided Netscape-format cookies.txt file for YouTube bot checks."
+      zh_Hans: "可选的用户提供的 Netscape 格式 cookies.txt 文件，用于通过 YouTube 机器人检查。"
+      pt_BR: "Arquivo cookies.txt opcional, fornecido pelo usuário, no formato Netscape para verificações anti-bot do YouTube."
+      ja_JP: "YouTube のボット確認に使う、ユーザー提供の Netscape 形式 cookies.txt ファイル（任意）。"
+    llm_description: "Optional user-provided Netscape-format YouTube cookies.txt file. Do not ask the user to paste cookie values into chat."
+    form: form
 output_schema:
   type: object
   properties:

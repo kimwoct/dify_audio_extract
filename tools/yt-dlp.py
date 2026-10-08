@@ -71,6 +71,30 @@ def _js_runtime_args(root_dir: Path, current_platform: str) -> tuple[list[str], 
     return ["--js-runtimes", f"quickjs:{qjs_path}"], f"enabled bundled quickjs at {qjs_path}"
 
 
+def _cookie_args(cookies_file: Any) -> tuple[list[str], tempfile.TemporaryDirectory | None]:
+    """Stage a Dify file upload as a private, short-lived yt-dlp cookie file."""
+    if cookies_file is None or cookies_file == "":
+        return [], None
+
+    if isinstance(cookies_file, (str, Path)):
+        cookie_path = Path(cookies_file).expanduser()
+        if not cookie_path.is_file():
+            raise FileNotFoundError(f"Cookie file not found: {cookie_path}")
+        return ["--cookies", str(cookie_path)], None
+
+    cookie_blob = getattr(cookies_file, "blob", None)
+    if not isinstance(cookie_blob, (bytes, bytearray)):
+        raise ValueError("Parameter 'cookies_file' must be a Netscape cookie file.")
+    if not cookie_blob:
+        raise ValueError("Parameter 'cookies_file' is empty.")
+
+    cookie_staging = tempfile.TemporaryDirectory(prefix="yt_dlp_cookies_")
+    cookie_path = Path(cookie_staging.name) / "cookies.txt"
+    cookie_path.write_bytes(cookie_blob)
+    cookie_path.chmod(0o600)
+    return ["--cookies", str(cookie_path)], cookie_staging
+
+
 def _run_yt_dlp(
     url: str,
     output: str | None = None,
@@ -78,6 +102,7 @@ def _run_yt_dlp(
     extract_audio: bool = False,
     audio_format: str = "mp3",
     audio_quality: int = 5,
+    cookies_file: Any = None,
 ) -> Path:
     cleaned_url = str(url).strip()
     if not cleaned_url:
@@ -123,59 +148,65 @@ def _run_yt_dlp(
 
     _strip_quarantine(binary_path)
 
-    js_args, js_diag = _js_runtime_args(root_dir, current_platform)
     qjs_staging: tempfile.TemporaryDirectory | None = None
-    if current_platform != "darwin" and js_args:
-        # Plugin-daemon storage volumes are frequently mounted noexec, where the
-        # exec bit alone is not enough — yt-dlp would silently mark the runtime
-        # unavailable. Stage a copy where execution is allowed, mirroring the
-        # yt-dlp binary fallback below.
-        qjs_staging = tempfile.TemporaryDirectory(prefix="yt_dlp_qjs_")
-        staged = Path(qjs_staging.name) / "qjs"
-        shutil.copy2(Path(js_args[1].split(":", 1)[1]), staged)
-        staged.chmod(0o755)
-        js_args = ["--js-runtimes", f"quickjs:{staged}"]
-        js_diag = f"enabled quickjs staged at {staged}"
-
-    base_args = ["--output", str(output_path)]
-    if extract_audio:
-        base_args.extend(
-            [
-                "--extract-audio",
-                "--audio-format",
-                cleaned_audio_format,
-                "--audio-quality",
-                str(parsed_audio_quality),
-            ]
-        )
-    else:
-        # Keep video payloads bounded for the Dify file contract (PR #1).
-        base_args.extend(
-            [
-                "--format",
-                "bv*[height<=360][ext=mp4][vcodec^=avc1]+ba[ext=m4a]/bv*[height<=360][ext=mp4]+ba[ext=m4a]/b[height<=360][ext=mp4]/b[height<=360]/b",
-                "--merge-output-format",
-                "mp4",
-            ]
-        )
-    base_args.extend(js_args)
-    base_args.extend(["--", cleaned_url])
-
+    cookie_staging: tempfile.TemporaryDirectory | None = None
     try:
-        result = subprocess.run([str(binary_path), *base_args], capture_output=True, text=True, cwd=root_dir)
-    except PermissionError as e:
-        if e.errno != 13:
-            raise
+        js_args, js_diag = _js_runtime_args(root_dir, current_platform)
+        if current_platform != "darwin" and js_args:
+            # Plugin-daemon storage volumes are frequently mounted noexec, where the
+            # exec bit alone is not enough — yt-dlp would silently mark the runtime
+            # unavailable. Stage a copy where execution is allowed, mirroring the
+            # yt-dlp binary fallback below.
+            qjs_staging = tempfile.TemporaryDirectory(prefix="yt_dlp_qjs_")
+            staged = Path(qjs_staging.name) / "qjs"
+            shutil.copy2(Path(js_args[1].split(":", 1)[1]), staged)
+            staged.chmod(0o755)
+            js_args = ["--js-runtimes", f"quickjs:{staged}"]
+            js_diag = f"enabled quickjs staged at {staged}"
 
-        with tempfile.TemporaryDirectory(prefix="yt_dlp_exec_") as temp_dir:
-            fallback_binary = Path(temp_dir) / binary_path.name
-            shutil.copy2(binary_path, fallback_binary)
-            fallback_binary.chmod(0o755)
-            result = subprocess.run([str(fallback_binary), *base_args], capture_output=True, text=True, cwd=root_dir)
+        cookie_args, cookie_staging = _cookie_args(cookies_file)
 
-    if qjs_staging is not None:
-        qjs_staging.cleanup()
-        qjs_staging = None
+        base_args = ["--output", str(output_path)]
+        if extract_audio:
+            base_args.extend(
+                [
+                    "--extract-audio",
+                    "--audio-format",
+                    cleaned_audio_format,
+                    "--audio-quality",
+                    str(parsed_audio_quality),
+                ]
+            )
+        else:
+            # Keep video payloads bounded for the Dify file contract (PR #1).
+            base_args.extend(
+                [
+                    "--format",
+                    "bv*[height<=360][ext=mp4][vcodec^=avc1]+ba[ext=m4a]/bv*[height<=360][ext=mp4]+ba[ext=m4a]/b[height<=360][ext=mp4]/b[height<=360]/b",
+                    "--merge-output-format",
+                    "mp4",
+                ]
+            )
+        base_args.extend(cookie_args)
+        base_args.extend(js_args)
+        base_args.extend(["--", cleaned_url])
+
+        try:
+            result = subprocess.run([str(binary_path), *base_args], capture_output=True, text=True, cwd=root_dir)
+        except PermissionError as e:
+            if e.errno != 13:
+                raise
+
+            with tempfile.TemporaryDirectory(prefix="yt_dlp_exec_") as temp_dir:
+                fallback_binary = Path(temp_dir) / binary_path.name
+                shutil.copy2(binary_path, fallback_binary)
+                fallback_binary.chmod(0o755)
+                result = subprocess.run([str(fallback_binary), *base_args], capture_output=True, text=True, cwd=root_dir)
+    finally:
+        if qjs_staging is not None:
+            qjs_staging.cleanup()
+        if cookie_staging is not None:
+            cookie_staging.cleanup()
 
     if result.returncode != 0:
         stdout_tail = (result.stdout or "").strip()[-1000:]
@@ -239,6 +270,11 @@ def main() -> int:
         default=5,
         help="Audio quality 0-10 when --extract-audio is used. Default: 5",
     )
+    parser.add_argument(
+        "--cookies",
+        default=None,
+        help="Path to a user-provided Netscape cookie file.",
+    )
     args = parser.parse_args()
 
     output_path = _run_yt_dlp(
@@ -247,6 +283,7 @@ def main() -> int:
         extract_audio=args.extract_audio,
         audio_format=args.audio_format,
         audio_quality=args.audio_quality,
+        cookies_file=args.cookies,
     )
     print(str(output_path))
     return 0
@@ -261,6 +298,7 @@ class YtDlpTool(Tool):
             extract_audio=is_audio,
             audio_format=str(tool_parameters.get("audio_format", "mp3") or "mp3"),
             audio_quality=int(tool_parameters.get("audio_quality", 5)),
+            cookies_file=tool_parameters.get("cookies_file"),
         )
 
         file_bytes = output_path.read_bytes()
