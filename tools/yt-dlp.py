@@ -9,6 +9,7 @@ import signal
 import shutil
 import subprocess
 import tempfile
+import time
 from typing import Any
 import uuid
 
@@ -34,6 +35,10 @@ _ARCH_ALIASES = {
     "x86_64": "x86_64",
     "amd64": "x86_64",
 }
+
+_SERVER_COOKIES_FILE = Path(
+    os.environ.get("YT_DLP_COOKIES_FILE", "/etc/dify/yt-dlp/youtube-cookies.txt")
+)
 
 
 def _strip_quarantine(path: Path) -> None:
@@ -71,28 +76,76 @@ def _js_runtime_args(root_dir: Path, current_platform: str) -> tuple[list[str], 
     return ["--js-runtimes", f"quickjs:{qjs_path}"], f"enabled bundled quickjs at {qjs_path}"
 
 
-def _cookie_args(cookies_file: Any) -> tuple[list[str], tempfile.TemporaryDirectory | None]:
-    """Stage a Dify file upload as a private, short-lived yt-dlp cookie file."""
+def _cookie_args(
+    cookies_file: Any,
+) -> tuple[list[str], tempfile.TemporaryDirectory | None, str]:
+    """Stage cookies privately, preferring an explicit file over the server file."""
+    cookie_source = "supplied"
     if cookies_file is None or cookies_file == "":
-        return [], None
-
-    if isinstance(cookies_file, (str, Path)):
+        if not _SERVER_COOKIES_FILE.is_file():
+            return [], None, "not provided"
+        cookie_path = _SERVER_COOKIES_FILE
+        cookie_source = "server-side"
+        cookie_blob = cookie_path.read_bytes()
+    elif isinstance(cookies_file, (str, Path)):
         cookie_path = Path(cookies_file).expanduser()
         if not cookie_path.is_file():
             raise FileNotFoundError(f"Cookie file not found: {cookie_path}")
-        return ["--cookies", str(cookie_path)], None
-
-    cookie_blob = getattr(cookies_file, "blob", None)
+        cookie_blob = cookie_path.read_bytes()
+    else:
+        cookie_blob = getattr(cookies_file, "blob", None)
     if not isinstance(cookie_blob, (bytes, bytearray)):
-        raise ValueError("Parameter 'cookies_file' must be a Netscape cookie file.")
+        raise ValueError("Parameter 'cookies_file' must be an uploaded Netscape cookie file, not JSON or cookie text.")
     if not cookie_blob:
         raise ValueError("Parameter 'cookies_file' is empty.")
 
+    try:
+        cookie_text = cookie_blob.decode("utf-8-sig").replace("\r\n", "\n").replace("\r", "\n")
+    except UnicodeDecodeError:
+        raise ValueError("Parameter 'cookies_file' must be a UTF-8 Netscape cookie file.") from None
+    lines = cookie_text.splitlines()
+    if not lines or lines[0] not in {"# Netscape HTTP Cookie File", "# HTTP Cookie File"}:
+        raise ValueError("Parameter 'cookies_file' must have a Netscape HTTP Cookie File header; JSON is not supported.")
+
+    cookie_count = 0
+    usable_count = 0
+    now = time.time()
+    for line_number, line in enumerate(lines[1:], start=2):
+        if line.startswith("#HttpOnly_"):
+            line = line[len("#HttpOnly_"):]
+        elif not line.strip() or line.lstrip().startswith(("#", "$")):
+            continue
+        fields = line.split("\t")
+        if len(fields) != 7:
+            raise ValueError(f"Invalid Netscape cookie row at line {line_number}: expected 7 tab-separated fields.")
+        domain, include_subdomains, path, secure, expires, name, value = fields
+        if (
+            not domain
+            or include_subdomains not in {"TRUE", "FALSE"}
+            or (include_subdomains == "TRUE") != domain.startswith(".")
+            or secure not in {"TRUE", "FALSE"}
+            or (expires and not expires.isascii())
+            or (expires and not expires.isdecimal())
+        ):
+            raise ValueError(f"Invalid Netscape cookie fields at line {line_number}; export a fresh cookies.txt file.")
+        cookie_count += 1
+        if not expires or int(expires) == 0 or int(expires) > now:
+            usable_count += 1
+    if not cookie_count:
+        raise ValueError("Parameter 'cookies_file' contains no cookies.")
+    if not usable_count:
+        raise ValueError("All cookies in 'cookies_file' have expired; export and upload fresh YouTube cookies.")
+
     cookie_staging = tempfile.TemporaryDirectory(prefix="yt_dlp_cookies_")
     cookie_path = Path(cookie_staging.name) / "cookies.txt"
-    cookie_path.write_bytes(cookie_blob)
-    cookie_path.chmod(0o600)
-    return ["--cookies", str(cookie_path)], cookie_staging
+    try:
+        with cookie_path.open("xb") as cookie_stream:
+            cookie_path.chmod(0o600)
+            cookie_stream.write(cookie_text.encode("utf-8"))
+    except BaseException:
+        cookie_staging.cleanup()
+        raise
+    return ["--cookies", str(cookie_path)], cookie_staging, cookie_source
 
 
 def _run_yt_dlp(
@@ -164,7 +217,7 @@ def _run_yt_dlp(
             js_args = ["--js-runtimes", f"quickjs:{staged}"]
             js_diag = f"enabled quickjs staged at {staged}"
 
-        cookie_args, cookie_staging = _cookie_args(cookies_file)
+        cookie_args, cookie_staging, cookie_source = _cookie_args(cookies_file)
 
         base_args = ["--output", str(output_path)]
         if extract_audio:
@@ -224,9 +277,23 @@ def _run_yt_dlp(
         if current_platform == "darwin" and result.returncode == -9:
             extra_hint = " On macOS this may be caused by Gatekeeper/quarantine."
 
+        cookie_diag = {
+            "server-side": "server-side (validated Netscape file)",
+            "supplied": "supplied (validated Netscape file)",
+            "not provided": "not provided",
+        }[cookie_source]
+        if "Sign in to confirm" in (result.stderr or ""):
+            if cookie_source == "server-side":
+                extra_hint += " YouTube rejected the server-side cookies; replace the private server-side cookie file."
+            elif cookie_args:
+                extra_hint += " YouTube rejected the supplied cookies; export and upload fresh cookies. Valid file format does not guarantee a valid session."
+            else:
+                extra_hint += " No cookies were supplied and no server-side cookie file was found."
+
         raise RuntimeError(
             f"yt-dlp failed with exit code {result.returncode}{signal_text}.{extra_hint} "
             f"JS runtime: {js_diag}. "
+            f"Cookies: {cookie_diag}. "
             f"stdout_tail: {stdout_tail or '(empty)'}; stderr_tail: {stderr_tail or '(empty)'}"
         )
 

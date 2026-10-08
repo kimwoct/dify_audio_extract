@@ -183,9 +183,12 @@ Thumbs.db
 *.difypkg
 
 # Local agent/tooling artifacts
+cookies.txt
+*cookies*.txt
+secrets/
+tests/
 .mimosa/
 .v2c/
 .video_agent/
 .zcode/
 deploy/
-
