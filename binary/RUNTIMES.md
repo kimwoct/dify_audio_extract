@@ -3,12 +3,17 @@
 Binaries bundled with this plugin and the releases they were taken from.
 yt-dlp's YouTube extractor breaks frequently — refresh both on a schedule.
 
-## yt-dlp — 2026.08.19
+## yt-dlp — 2026.11.23
+
+2026.11.23 is the first bundled release that extracts with the authenticated
+client set (`tv_samsung`, `web_embedded`, `web`) and with the default `tv`
+player JS variant. See "Plugin 0.0.9" in [SOLUTION.md](../SOLUTION.md) for the
+incident this refresh fixes.
 
 | File | Release asset | sha256 |
 |---|---|---|
-| `macosx/yt-dlp_macos` | [yt-dlp_macos](https://github.com/yt-dlp/yt-dlp/releases/download/2026.08.19/yt-dlp_macos) | `0f192b7ec147ab6288885d6351d9ab67367640029b4377576ef46dd79cf7b202` |
-| `linux/yt-dlp` | [yt-dlp](https://github.com/yt-dlp/yt-dlp/releases/download/2026.08.19/yt-dlp) (zipapp, needs python3 ≥ 3.10 in container) | `1fa6733c37ea6fb51c99ad8fe785e7b7e5f3246c9b980230329d4fb72ed8d4d6` |
+| `macosx/yt-dlp_macos` | [yt-dlp_macos](https://github.com/yt-dlp/yt-dlp/releases/download/2026.11.23/yt-dlp_macos) | `57654854886d0398a798895aadf5173e2749fbb5e249b9f3728022ab376e11fb` |
+| `linux/yt-dlp` | [yt-dlp](https://github.com/yt-dlp/yt-dlp/releases/download/2026.11.23/yt-dlp) (zipapp, needs python3 ≥ 3.11 in container; the plugin runner uses 3.12) | `e8665ed64d6b9172773e812f891fb707a0cb1ee8d9ef4fc1acb00cabee4c5256` |
 
 ## QuickJS-NG — v0.17.0
 
@@ -27,7 +32,7 @@ always wins when installed. Linux builds are static-pie (no glibc dependency).
 ## Updating
 
 ```bash
-VER=2026.08.19  # yt-dlp tag
+VER=2026.11.23  # yt-dlp tag
 QJS=v0.17.0     # quickjs-ng tag
 curl -sL -o binary/macosx/yt-dlp_macos "https://github.com/yt-dlp/yt-dlp/releases/download/${VER}/yt-dlp_macos"
 curl -sL -o binary/linux/yt-dlp        "https://github.com/yt-dlp/yt-dlp/releases/download/${VER}/yt-dlp"

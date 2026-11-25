@@ -41,6 +41,44 @@ directory mount and workflow migration, and [COOKIE_API.md](COOKIE_API.md)
 for an API request with no cookie upload. All fallback calls share one
 server-side session; daemon administrators can still access the source file.
 
+## Plugin 0.0.9 — stale extractor breaks authenticated sessions (2026-11-25)
+
+Incident: `RuntimeError: yt-dlp failed with exit code 1` carrying
+`[jsc:quickjs] … TypeError: not a function`, `n challenge solving failed`, the
+SABR-only warning, and `ERROR: [youtube] <id>: The page needs to be reloaded.`
+The server-side cookie file was valid and the staged QuickJS runtime was running.
+
+Root cause: with YouTube auth cookies present, bundled yt-dlp 2026.08.19 selects
+`_DEFAULT_AUTHED_CLIENTS = ('web_embedded', 'tv_downgraded', 'web')` and the
+`main` player JS variant. For the reported player (`b485e332-main`), the EJS
+0.8.0 n-challenge solver crashes under QuickJS-NG 0.17.0
+(`TypeError: not a function`), so the `web_embedded` URLs stay SABR-only. The
+remaining client, `tv_downgraded`, returns playability status `ERROR` with
+reason "The page needs to be reloaded", which becomes the final error. Without
+cookies, the cookie-free clients (`visionos`, `web`) extract the same video —
+that is why cookie-free checks passed.
+
+yt-dlp 2026.11.23 changes both paths:
+
+- the default player JS variant is `tv`, not `main`, so the solver no longer
+  crashes on the `-main` player;
+- authenticated defaults are `('tv_samsung', 'web_embedded', 'web')`;
+  `tv_downgraded` is dropped;
+- the STS truncation workaround and the 2026.10.21 certifi/brotli security
+  fixes are included.
+
+Reproduced on the bundled Linux zipapp + bundled aarch64 QuickJS under Python
+3.12 in Docker with
+`--extractor-args youtube:player_client=web_embedded,tv_downgraded,web`:
+2026.08.19 fails with the reported error; 2026.11.23 lists formats and the
+plugin's selector picks `18` (640x360 mp4). The same client set succeeds with
+the refreshed macOS binary. This is not a defect in cookie validation, cookie
+staging, or QuickJS staging.
+
+Note: the `TypeError` is printed before the `input = NChallengeInput(...)` line,
+so the plugin's 1000-char `stderr_tail` can hide it. The reliable markers in
+this release are `n challenge solving failed` and `The page needs to be reloaded`.
+
 ## Cookie handling update in plugin 0.0.7
 
 The existing `cookies_file` input is unchanged. Cookie contents are now
@@ -76,7 +114,7 @@ in the package. Valid file format cannot repair a rotated YouTube session.
 ## Deployment on the Dify host (192.168.2.105)
 
 1. **Plugin**: Dify → Plugins → yt-dlp → Remove → Confirm → Install plugin →
-   Install from local file → `dify_audio_extract.difypkg` (0.0.5).
+   Install from local file → `dify_audio_extract.difypkg` (0.0.9).
 2. **Daemon mounts** (optional but recommended; no plugin change needed):
    - deno (yt-dlp's reference runtime): [deploy/daemon-deno/](deploy/daemon-deno/README.md)
    - ffmpeg + ffprobe (mp3 conversion): [deploy/daemon-ffmpeg/](deploy/daemon-ffmpeg/README.md)
@@ -100,6 +138,7 @@ in the package. Valid file format cannot repair a rotated YouTube session.
 | `ffprobe and ffmpeg not found` | Daemon lacks ffmpeg — apply `deploy/daemon-ffmpeg/`. |
 | `Sign in to confirm you’re not a bot` | Upload a current YouTube `cookies.txt` through the tool's `cookies_file` input. Never paste cookie values into chat. |
 | "This video is not available", marker present, no JS warning | Video is genuinely unavailable (private/removed/restricted) — check logged-out in a browser. |
+| `n challenge solving failed` **and** `The page needs to be reloaded` | Bundled yt-dlp ≤ 2026.08.19 with auth cookies (`web_embedded`/`tv_downgraded`) — install ≥ 0.0.9 (yt-dlp 2026.11.23). |
 | Plugin page version ≠ manifest `version:` | Wrong/failed install — repackage and reinstall. |
 
 ## Maintenance
@@ -108,6 +147,6 @@ in the package. Valid file format cannot repair a rotated YouTube session.
   [binary/RUNTIMES.md](binary/RUNTIMES.md) has download commands + sha256 pins.
 - Refresh QuickJS-NG occasionally (rarely needed).
 - Keep the uncompressed package under 50 MiB; if `yt-dlp_macos` (37 MB) ever
-  pushes past it, swap it for the 3 MB zipapp (needs host python3 ≥ 3.10).
+  pushes past it, swap it for the 3 MB zipapp (needs host python3 ≥ 3.11).
 - Repackage: bump `version:` in `manifest.yaml`, then from the parent dir:
   `dify plugin package dify_audio_extract`.
