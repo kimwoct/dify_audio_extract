@@ -183,6 +183,10 @@ Thumbs.db
 *.difypkg
 
 # Local agent/tooling artifacts
+.agents/
+.factory/
+skills-lock.json
+graphify-out/
 cookies.txt
 *cookies*.txt
 secrets/
